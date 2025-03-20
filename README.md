@@ -1,5 +1,5 @@
-# OpenBaitCaster
-Open source Bait Casting Reel controller
+# Servo CAST
+Open source technology for the control of Bait Casting Reels
 
 ## The Goals
 

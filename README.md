@@ -1,20 +1,56 @@
-# Servo CAST
-Open source technology for the control of Bait Casting Reels
+# Servo CAST  
+The open source technology for the control of Bait Casting Reels
 
-## The Goals
+## The Goals  
 
-1. Firmware for Arduino  
-The firmware is designed for the smallest 32bits Arduino or [Seeeduino Xiao BLE](https://www.seeedstudio.com/Seeed-XIAO-BLE-nRF52840-p-5201.html). The mbedOS working behind these arduino family hes made the multi threading easy and at the same time reliable. 
+1. Compatible with the [Arduino](https://www.arduino.cc/)  
 
-2. Realtime direct line tension control  
-The realtime control is designed for the control of reel. It directly controls the line tension with the quick change of the pwm duty. This results the brake intensity to adapt automatically to any lure and wind condition without the selection of such as rotary switches.
+2. Servo technology to control the line tension or slack  
 
 3. Minimal Circuit  
-The circuit is comprised with only discrete devices, no need of the special devices such as a Hole-IC to detect spool rotation.
 
-4. Design rules of principal parts  
-The principal parts are a coil and a magnet rotor. We reveal the design rule for these parts.
+4. Monitoring and Setting tools  
 
-5. Monitoring and Setting tools  
-Due to the usage of casting reel, the wireless communication is needed for testing.
+5. Technology disclosure
 
+## Developper Tips
+
+### with ES(Nordic nRF52840)
+#### FS_Nano33BLEパッチ
+
+
+#### Fast bootパッチ  
+nRF52のデフォルトのブートシーケンスは、LPTICK(外部の低速Xtal)の安定を待つため、0.3秒程度かかる。バッテリレスモードではこの遅れが致命的であるが、USTICKのみを使うことでブート時間を短縮できる。
+
+
+
+### MP(Renesas RA4M1)
+#### Arduino IDE
+[参照](https://support.arduino.cc/hc/en-us/articles/9005041052444-Fix-udev-rules-on-Linux#renesas)
+
+1. ダウンロード  
+https://github.com/arduino/ArduinoCore-renesas/tree/mainから[post_install.sh](https://github.com/arduino/ArduinoCore-renesas/blob/main/post_install.sh)をダウンロード
+
+2. 実行パーミッションを付与して実行
+~~~
+chmod +x post_install.sh
+sudo ./post_install.sh
+~~~
+
+3. 確認  
+/etc/udev/rules.d/に??-arduino-renesas.rulesが出来ていればOK
+~~~
+ls /etc/udev/rules.d
+~~~
+
+#### Flush with RFP  
+https://github.com/arduino/ArduinoCore-renesas/tree/1.3.1/bootloaders/UNO_R4
+~~~
+rfp-cli -device ra -port $portname -p dfu_minima.hex
+~~~
+https://zenn.dev/ichirowo/articles/6aa1614e102bce
+
+#### Skipping the bootloader  
+https://forum.arduino.cc/t/r4-without-bootloader/1286274
+ブートローダソース
+https://github.com/arduino/arduino-renesas-bootloader

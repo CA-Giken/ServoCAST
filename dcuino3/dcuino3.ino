@@ -1,7 +1,18 @@
-#include <Arduino.h>
-#include <ServoCAST.h>
 #include <SetTimeout.h>
-#include "Algor.h"
+#include <ServoCAST.h>
+#include <ServoCAST_nRF52.h>
+#include <ServoCAST_Algor.h>
+
+//params Algor.cpp
+uint8_t algor_param[]={
+  1,5,0,0,  150,200,50,0,
+  120,30,0,0,  150,200,10,150,
+  20,40,0,0,  20,2,0,0,
+  0,115,12,120,  25,117,33,107,
+  64,60,128,30,  193,25,255,25,
+  200,100,50,0,  10,50,60,0,
+  50,30,45,50,  10,120,120,0
+};
 
 void setup() {
   Serial.begin(115200);

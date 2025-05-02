@@ -22,7 +22,8 @@ void setup() {
   int do_fet=getPin(PRM_ReadData(1));
   pinMode(di_sen,INPUT);  //rotation sensor
   pinMode(do_fet,OUTPUT);  //FET
-  dcore::run(di_sen,do_fet,
+  dcore::config(di_sen,do_fet,1,0);
+  dcore::run(
     [](){//start callback
       algor_prepare();
       NRF_WDT->CONFIG=0x01;     // Configure WDT to run when CPU is asleep

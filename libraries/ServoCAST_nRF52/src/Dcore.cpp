@@ -17,8 +17,7 @@ static NRF52_MBED_Timer ITimer1(NRF_TIMER_4);   //Debouncer and PWM blocker
 #define LENGTH(x) (sizeof(x))/(sizeof(x[0]))
 
 namespace dcore{//DC core
-  uint8_t ndiv=1;
-  uint8_t RunLevel,tpwm;
+  uint8_t RunLevel;
   static StartCB_t start_callback;
   static ContCB_t cont_callback;
   static EndCB_t end_callback;
@@ -26,13 +25,18 @@ namespace dcore{//DC core
 }
 
 namespace pwm{//methods for gate on(turn pwm pulse high)
+  static uint8_t ndiv=1;
   static uint8_t DO;//digital out pin
   static uint16_t Count; //Switch count
   static uint16_t Interval; //Switch interval
   static uint16_t Treq; //Turn on time cmd
   static uint16_t Tact; //actual turn on time sum
   static uint16_t Ton; //latch for Tact
-  static uint16_t Tpwm[]={1000000/1397,1000000/1046,1000000/830};//1174Hz=D5,784Hz=G4
+//	698Hz/F5 784Hz/G5 880Hz/A5 988/B5 1046Hz/C6	1175Hz/D6
+  const uint16_t Tpwm0=1000000/880;  //primary period
+  const uint16_t TpwmS=1000000/1046; //shorter period
+  const uint16_t TpwmL=1000000/784;  //longer priod
+//  static uint16_t Tpwm[]={1000000/1397,1000000/1046,1000000/830};
   static uint8_t Duty; //duty command
   static bool Block;
   void on(); //to turn gate on
@@ -49,11 +53,12 @@ namespace sens{
   static rtos::Thread thread(osPriorityHigh);  //rotation sensor
   static rtos::Semaphore sema;
   static long wdt;
-  static volatile int32_t Tm;
+  static volatile int32_t Tm,Tb;
   static volatile uint32_t Interval,Interval_1;
-  static uint8_t Nint;
+  static uint8_t ndiv,cdiv,Nint;
   static mbed::InterruptIn* irq;
   static uint8_t DI;
+  static uint16_t debounce=0;
 //methods for sensing(pin interrupt)
   static void intr();
   static void start();
@@ -144,25 +149,33 @@ namespace pwm{//methods for pwm
     else Treq=0;
   }
   void start1(uint32_t trev){
-    uint16_t pcnt=trev/Tpwm[0];
-    pcnt|=1; //division should be odd number
+//    uint16_t pcnt=trev/Tpwm[0];
+//    pcnt|=1; //division should be odd number
+    uint16_t pcnt= ndiv==1? 3: ndiv==2? 4:3;
     Interval=trev/pcnt;
     start();
     Count=pcnt-1;
     Block=false;
-    dcore::tpwm=Interval/10;
   }
   void startN(uint32_t trev){
-    int tf=trev*130/400;
+/*    int tf=trev*130/400;
     uint16_t *tbl=Tpwm;
     if(tf>Tpwm[sizeof(Tpwm)/sizeof(Tpwm[0])-1]){
       if(tf/2>Tpwm[0]) tbl++;
     }
     else{
       while(tf>*tbl) tbl++;
+    }*/
+    int tw=Tpwm0;
+    int tf=trev/(ndiv==1? 4: ndiv==2? 6:2);
+    int dw=tw-tf;
+    if(dw>0){
+      if(dw<200) tw=TpwmL;
     }
-
-    int tw=*tbl;
+    else{
+      if(dw>-200) tw=TpwmS;
+    }
+    
     if(Count==0){  //Start pwm
       Interval=tw;
       start();
@@ -174,7 +187,6 @@ namespace pwm{//methods for pwm
     }
     else Count=99;  //Extend duration
     Block=false;
-    dcore::tpwm=Interval/10;
   }
 }
 
@@ -195,10 +207,10 @@ namespace debouncer{
       Ton=0;
     }
     else{
-      int dt_1=dto/30;
-      int dt0=dtn/30;
+      int dt_1=(int)dto/30;
+      int dt0=(int)dtn/30;
       int a=-dt0+dt_1;
-      int dtx=dtn;
+      int dtx=(int)dtn;
       if(a>0){
         int v0=(-(dt0*dt0)+(dt_1*dt_1)+2*(dt_1*dt0));
         int d0=dt0*dt_1*(dt0+dt_1);
@@ -229,7 +241,7 @@ static void log_pre();
 static void log_post();
 
 namespace sens{
-  void init(){ wdt=Interval=Interval_1=0;}
+  void init(){ wdt=Interval=Interval_1=cdiv=0;}
   void stop(){
     irq->rise(NULL);
   }
@@ -239,32 +251,49 @@ namespace sens{
   void intr(){
     stop();
     long tnow=micros();
+    if(tnow-Tb<debounce){
+      start();
+      Tb=tnow;
+      return;
+    }
     long dt=tnow-Tm;
-    Tm=tnow;
+    Tm=Tb=tnow;
     switch(dcore::RunLevel){
-    case 0:
+    case 0:{
       debouncer::start(dt,0);
       Interval_1=dt;
-      if(dt*(dcore::ndiv+1)<20000){
+      int tc=dt*(ndiv+1);
+      if(tc<20000){
         dcore::RunLevel=1;
         sema.release();
       }
       break;
+    }
     case 1:
       debouncer::start(dt,0);
-      if(Interval==0){
-        if(dcore::ndiv){
+      switch(cdiv){
+      case 0:
+        if(ndiv){
           Interval_1+=dt;
-          Interval=1;
+          cdiv= ndiv==1? 1:3;
         }
         else{
-          Interval=0;
+          Interval_1=dt;
           dcore::RunLevel=2;
         }
-      }
-      else{
-        Interval=dt;
+        break;
+      case 3:
+        Interval_1+=dt;        
+        cdiv--;
+        break;
+      case 2:
+        Interval+=dt;
+        cdiv--;
+        break;
+      case 1:
+        Interval+=dt;
         dcore::RunLevel=2;
+        break;
       }
       break;
     case 2:
@@ -372,13 +401,17 @@ namespace dcore{
       break;
     }
   }
-  void run(int DI,int DO,StartCB_t cb_start,ContCB_t cb_cont,EndCB_t cb_end){
+  void config(int DI,int DO,int div,int boun){
+    sens::DI=DI;
+    pwm::DO=DO;
+    pwm::ndiv=sens::ndiv=div;
+    sens::debounce=boun;
+  }
+  void run(StartCB_t cb_start,ContCB_t cb_cont,EndCB_t cb_end){
     start_callback=cb_start;
     cont_callback=cb_cont;
     end_callback=cb_end;
-    sens::DI=DI;
-    pwm::DO=DO;
-    sens::Tm=micros()-1000000;
+    sens::Tm=(sens::Tb=micros())-1000000;
     sens::Nint=digitalPinToInterrupt(sens::DI);
     sens::irq = new mbed::InterruptIn(digitalPinToPinName(sens::Nint));
     sens::thread.start(mbed::callback(sens::task));

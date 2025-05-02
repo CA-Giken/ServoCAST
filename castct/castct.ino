@@ -6,7 +6,10 @@ uint8_t algor_param[]={
   0,0,0,0,  0,0,0,0,
 };
 uint16_t algor_prepare(){}
-uint16_t algor_update(int32_t time,int32_t duty){ return 0;}
+uint16_t algor_update(int32_t time,int32_t duty){
+//  if(dcore::RunLevel==3) dcore::shift();  //RunLevel =>4
+  return 0;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -18,7 +21,8 @@ void setup() {
   pinMode(D8,OUTPUT);  //Vcc
   pinMode(D9,INPUT);  //Comp. out
 
-  dcore::run(D9,LEDR,
+  dcore::config(D9,LEDR,0,1000);
+  dcore::run(
     [](){//start callback
       algor_prepare();
       NRF_WDT->CONFIG=0x01;     // Configure WDT to run when CPU is asleep
@@ -31,11 +35,13 @@ void setup() {
       return d;
     },
     [](){//end callback 
+      Serial.print("end callback ");
+      Serial.println(logger::length());
+      if(logger::length()<50) return;
       ble::logdump();
 //      logger::dump();
     }
   );
-  dcore::ndiv=0;    //No revolution divide
 
   ble::run(
     "arDCino",  //device name 
@@ -56,6 +62,11 @@ void loop() {
     digitalWrite(D7,HIGH);
     digitalWrite(D8,HIGH);
     analogWrite(A5,8);  //comparator reference
-    digitalWrite(LEDB,digitalRead(D9)? HIGH:LOW);  //comparator result
+    if(digitalRead(D9)){
+      digitalWrite(LEDB,HIGH);
+    }
+    else{
+      digitalWrite(LEDB,LOW);
+    }
   }
 }

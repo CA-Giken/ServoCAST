@@ -112,6 +112,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
   logger::stage.beta=satuate(round(bh),-32768,32767);
   switch(PRM_ReadData(3)){
     case 0: logger::stage.eval=satuate(iflag*20,0,255); break;
+    case 1: logger::stage.eval=satuate(dcore::RunLevel*20,0,255); break;
     case 4: logger::stage.eval=satuate(fvalue,0,255); break;
   }
 
@@ -175,7 +176,6 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
           uint8_t ival=PRM_ReadData(20);
           if(dcore::RunLevel>0) setTimeout.set(ffunc,ival);
           if(iflag<5){
-            dcore::shift();
             logger::ALOG *p1=logger::data+logger::length()-1;  //tail of data
             int d=p1->duty;
             int n=1;
@@ -190,6 +190,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
           fcema=ival;
           iflag=5;
         },itsw2-itsw1);
+        setTimeout.set(dcore::shift,50);
       }
     }
     case 5:
@@ -238,26 +239,23 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       else if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }
-    case 5:{ //Steady state(PI control)
+    case 5:{ //Steady state(Tri-state-control)
       int refl=PRM_ReadData(51);  //fvalue low
       int refh=PRM_ReadData(52);  //fvalue high
       int stat= fvalue>refh? 1: fvalue<refl? -1:0;
-      if(fcema){
-        float dz=igrad*0.001*fcema*zinteg/(int)ivalue;
-        if(stat<0){
-          float dk=zmax*PRM_ReadData(53)*0.01;
-          zinteg+=dk;
+      if(fcema){  //update zinteg
+        if(stat>=0){
+          float dz=igrad*0.001*fcema*zinteg/(int)ivalue;
+          zinteg+=dz;
+          if(stat>0){
+            float dk=zinteg*PRM_ReadData(54)*0.01;
+            zinteg-=dk;
+          }
+          zinteg=satuate(zinteg,zmin,zmax);
         }
-        else if(stat>0){
-          float dk=zinteg*PRM_ReadData(54)*0.01;
-          zinteg-=dk;
-          if(dz>0) zinteg+=dz;
-        }
-        else zinteg+=dz;
-        zinteg=satuate(zinteg,zmin,zmax);
         fcema=0;
       }
-      zcmd=zinteg;
+      zcmd= stat>=0? zinteg:MAX(zinteg,ivmax*PRM_ReadData(53)/100);
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

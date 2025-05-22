@@ -22,7 +22,7 @@ void setup() {
   int do_fet=getPin(PRM_ReadData(1));
   pinMode(di_sen,INPUT);  //rotation sensor
   pinMode(do_fet,OUTPUT);  //FET
-  dcore::config(di_sen,do_fet,1,0);
+  dcore::config(di_sen,do_fet,1,PRM_ReadData(2),PRM_ReadData(2)%10);
   dcore::run(
     [](){//start callback
       algor_prepare();

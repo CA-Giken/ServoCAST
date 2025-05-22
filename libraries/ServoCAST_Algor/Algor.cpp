@@ -190,14 +190,10 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
           fcema=ival;
           iflag=5;
         },itsw2-itsw1);
-        setTimeout.set(dcore::shift,50);
       }
     }
     case 5:
-      if(PRM_ReadData(7)>0 && bh<-(int)PRM_ReadData100x(7)) iflag=6;
       break;
-    case 6:
-      return ivmax;
   }
 
   int zcmd=ivalue;

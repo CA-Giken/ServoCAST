@@ -21,6 +21,7 @@ namespace dcore{//DC core
   static StartCB_t start_callback;
   static ContCB_t cont_callback;
   static EndCB_t end_callback;
+  static uint16_t swdelay;
   static void init();
 }
 
@@ -32,11 +33,14 @@ namespace pwm{//methods for gate on(turn pwm pulse high)
   static uint16_t Treq; //Turn on time cmd
   static uint16_t Tact; //actual turn on time sum
   static uint16_t Ton; //latch for Tact
+  static uint16_t Tirqe; //IRQ enable delay after intr_off
 //	698Hz/F5 784Hz/G5 880Hz/A5 988/B5 1046Hz/C6	1175Hz/D6
-  const uint16_t Tpwm0=1000000/880;  //primary period
-  const uint16_t TpwmS=1000000/1046; //shorter period
-  const uint16_t TpwmL=1000000/784;  //longer priod
-//  static uint16_t Tpwm[]={1000000/1397,1000000/1046,1000000/830};
+//  const uint16_t Tpwm0=1000000/880;  //primary period
+//  const uint16_t TpwmS=1000000/1046; //shorter period
+//  const uint16_t TpwmL=1000000/784;  //longer priod
+  const uint16_t Tpwm[]={1000000/860,1000000/906,1000000/967,1000000/1019,1000000/1088,1000000/1146,1000000/1208,1000000/1290};
+  const auto Npwm=sizeof(Tpwm)/sizeof(Tpwm[0]);
+  static uint8_t Ipwm;
   static uint8_t Duty; //duty command
   static bool Block;
   void on(); //to turn gate on
@@ -93,11 +97,17 @@ namespace pwm{//methods for pwm
   }
   static void intr_off2(){
     off();
-    ITimer1.setFrequency(1,[](){});
     Block=true;
     Ton=Tact+=Treq;
     Tact=0;
-    sens::start();
+    if(Tirqe>0) ITimer1.setInterval(Tirqe,[](){
+      ITimer1.setFrequency(1,[](){});
+      sens::start();
+    });
+    else{
+      ITimer1.setFrequency(1,[](){});
+      sens::start();
+    }
   }
   static void intr_on(){
     switch(Count){
@@ -111,14 +121,17 @@ namespace pwm{//methods for pwm
       int32_t tnex2=sens::Tm+sens::Interval*19/20;
       if(tnex>tnex2) tnex=tnex2;
       Treq=(long)Interval*Duty>>8;
-      if(tnow+Treq-tnex>0){
-        int dt=tnex-tnow;
-        Treq=MAX(0,dt);
+      tnex=tnex-tnow;
+      if(Treq>tnex){
+        Treq=MAX(0,tnex);
       }
-      if(tnow+Interval-tnex>0){
+      Tirqe=0;
+      if(Interval>tnex){
         if(Treq>T_PWM_MIN){
           on();
           ITimer1.setInterval(Treq,intr_off2);
+          tnex-=Treq;
+          if(tnex>T_WAIT) Tirqe=tnex;
         }
         else{
           ITimer1.setFrequency(1,[](){});
@@ -145,6 +158,7 @@ namespace pwm{//methods for pwm
       Treq=(long)Interval*Duty>>8;
       if(Treq<T_PWM_MIN) Treq=T_PWM_MIN;
       ITimer1.setInterval(Treq,intr_off);
+      Tirqe=0;
     }
     else Treq=0;
   }
@@ -166,14 +180,14 @@ namespace pwm{//methods for pwm
     else{
       while(tf>*tbl) tbl++;
     }*/
-    int tw=Tpwm0;
+    int tw=Tpwm[Ipwm];
     int tf=trev/(ndiv==1? 4: ndiv==2? 6:2);
     int dw=tw-tf;
     if(dw>0){
-      if(dw<200) tw=TpwmL;
+      if(dw<200) tw=Tpwm[Ipwm-1];
     }
     else{
-      if(dw>-200) tw=TpwmS;
+      if(dw>-200) tw=Tpwm[Ipwm+1];
     }
     
     if(Count==0){  //Start pwm
@@ -392,20 +406,22 @@ namespace dcore{
     ITimer1.setFrequency(1,[](){});
   }
   void shift(){
-    switch(RunLevel){
-    case 3:
+    if(RunLevel==3){
       RunLevel=4;
-      break;
-    case 5:
-      RunLevel=6;
-      break;
+      if(swdelay>0){
+        setTimeout.set([](){
+          RunLevel=6;
+        },swdelay);
+      }
     }
   }
-  void config(int DI,int DO,int div,int boun){
+  void config(int DI,int DO,int div,int boun,int swdelay,int note){
     sens::DI=DI;
     pwm::DO=DO;
     pwm::ndiv=sens::ndiv=div;
     sens::debounce=boun;
+    dcore::swdelay=swdelay;
+    pwm::Ipwm= note<1? 1: note>pwm::Npwm-2? pwm::Npwm-2:note;
   }
   void run(StartCB_t cb_start,ContCB_t cb_cont,EndCB_t cb_end){
     start_callback=cb_start;

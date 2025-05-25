@@ -118,7 +118,7 @@ namespace pwm{//methods for pwm
     if(!Block){
       int32_t tnow=micros();
       int32_t tnex=sens::Tm+sens::Interval-T_WAIT;
-      int32_t tnex2=sens::Tm+sens::Interval*19/20;
+      int32_t tnex2=sens::Tm+sens::Interval*13/14;
       if(tnex>tnex2) tnex=tnex2;
       Treq=(long)Interval*Duty>>8;
       tnex=tnex-tnow;
@@ -131,7 +131,7 @@ namespace pwm{//methods for pwm
           on();
           ITimer1.setInterval(Treq,intr_off2);
           tnex-=Treq;
-          if(tnex>T_WAIT) Tirqe=tnex;
+          if(tnex>2*T_WAIT) Tirqe=tnex-T_WAIT;
         }
         else{
           ITimer1.setFrequency(1,[](){});

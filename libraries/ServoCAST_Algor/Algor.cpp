@@ -162,7 +162,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         wh=wrps;
         bh=ibbase=0;
         itsw1=tmsec;
-        itsw2=itsw1+PRM_ReadData10x(12)*wmax/PRM_ReadData10x(8);
+        itsw2=itsw1+(PRM_ReadData(12)<100? PRM_ReadData10x(12):(PRM_ReadData(12)%100*10)*wmax/PRM_ReadData10x(8));
         setPol(PRM_ReadData(6),0);
       }
       break;

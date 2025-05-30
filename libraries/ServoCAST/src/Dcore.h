@@ -8,6 +8,8 @@ namespace dcore{
   typedef uint16_t (*ContCB_t)(int32_t interval_usec,int32_t turnon_usec);
   typedef void (*EndCB_t)();
   extern uint8_t RunLevel;
+  extern uint32_t tusec; //elapsed time in usec
+  extern uint16_t tmsec; //elapsed time in msec
   void config(int sensPort,int gatePort,int ndiv,int debounce_usec,int pwmSwDelay=0,int pwmNote=1);
   void run(StartCB_t,ContCB_t,EndCB_t);
   void shift();  //switch to deceleration mode

@@ -18,6 +18,8 @@ static NRF52_MBED_Timer ITimer1(NRF_TIMER_4);   //Debouncer and PWM blocker
 
 namespace dcore{//DC core
   uint8_t RunLevel;
+  uint32_t tusec;
+  uint16_t tmsec;
   static StartCB_t start_callback;
   static ContCB_t cont_callback;
   static EndCB_t end_callback;
@@ -350,6 +352,7 @@ namespace sens{
       logger::start();
       break;
     case 3:
+      dcore::tmsec=(dcore::tusec+=Interval)/1000;
       log_pre();
       debouncer::Tcmd=(*dcore::cont_callback)(Interval,pwm::Ton);
       log_post();
@@ -375,6 +378,7 @@ namespace sens{
       break;
     case 5:
     case 6:
+      dcore::tmsec=(dcore::tusec+=Interval)/1000;
       log_pre();
       pwm::Duty=(*dcore::cont_callback)(Interval,pwm::Ton);
       log_post();
@@ -402,6 +406,7 @@ namespace dcore{
     debouncer::init();
     sens::start();
     RunLevel=0;
+    tusec=0;
     ITimer0.setFrequency(1,[](){});
     ITimer1.setFrequency(1,[](){});
   }
@@ -448,6 +453,8 @@ namespace dcore{
 
 void log_pre(){
   log_lat=micros();
+  logger::stage.stamp=dcore::tusec;
+  logger::stage.latency=log_lat-sens::Tm;
   logger::stage.latency=log_lat-sens::Tm;
   logger::stage.interval=sens::Interval;
   logger::stage.mode=dcore::RunLevel;

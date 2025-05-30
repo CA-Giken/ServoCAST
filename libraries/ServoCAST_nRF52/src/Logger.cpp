@@ -30,6 +30,10 @@ namespace logger{
     if(size<1000) buf[size++]=stage;
     stage.stamp=0xFFFFFFFF;
   }
+  ALOG *trace(int n){
+    if(n<size) return buf+size-n-1;
+    else return NULL;
+  }
   void dump(){
     if(!Serial) return;
     dmpidx=0;

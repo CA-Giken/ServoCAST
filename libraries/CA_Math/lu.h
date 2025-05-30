@@ -7,7 +7,7 @@
 
 #define MEPS_LU (1e-10)
 
-int LU_decomposition(int dim, int *pivot, double *matrix) {
+inline int LU_decomposition(int dim, int *pivot, double *matrix) {
   int row, col, k;
   int ip, ip_tmp;
   double tmp_val, max_val;
@@ -58,7 +58,7 @@ int LU_decomposition(int dim, int *pivot, double *matrix) {
   return 0;
 }
 
-int LU_solver(int dim, int *pivot, double *matrix, double *vec, double *y) {
+inline int LU_solver(int dim, int *pivot, double *matrix, double *vec, double *y) {
   int row, col;
   double sum;
 

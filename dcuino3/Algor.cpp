@@ -1,12 +1,23 @@
+//Macros
+#define MAX(a,b) ((a)>(b)? a:b)
+#define MIN(a,b) ((a)<(b)? a:b)
+#define ARRSZ(a) (sizeof(a)/sizeof(a[0]))
+#define DOMAIN(x,a,b) ((x)>=(a) && (x)<=(b))
+
 #include <SetTimeout.h>
 #include <ServoCAST.h>
-#include "ServoCAST_Algor.h"
 
-#define MAXDIM 6
-#include "unittest/noef.h"
+uint8_t algor_param[]={
+  10,9,153,4,  150,200,70,0,
+  150,200,10,15,  20,150,30,70,
+  20,50,5,1,  50,0,0,0,
+  0,116,12,120,  25,117,33,110,
+  64,60,128,44,  193,38,255,33,
+  200,100,100,0,  10,40,25,0,
+  10,10,0,20,  50,0,7,0
+};
 
 //elapsed time
-static uint32_t tusec;
 static uint16_t revs;
 //observer vars
 static float wmax,wh,bh,hcoef1,hcoef2,bf,wro;
@@ -27,11 +38,6 @@ static uint16_t fduty;
 static void (*ffunc)();
 static uint16_t fspan;
 static uint8_t fcema;
-//Macros
-#define MAX(a,b) ((a)>(b)? a:b)
-#define MIN(a,b) ((a)<(b)? a:b)
-#define ARRSZ(a) (sizeof(a)/sizeof(a[0]))
-#define DOMAIN(x,a,b) ((x)>=(a) && (x)<=(b))
 
 /**************************************************************************/
 static int satuate(int val,int lo =0, int hi =255){
@@ -75,22 +81,21 @@ static void setPol(float polr,float poli){
   hcoef2=polr*polr+poli*poli;
 }
 void algor_prepare(){
-  tusec=0;
+  revs=0;
 }
 uint16_t algor_update(int32_t dtu,int32_t otu){
   if(dtu==0) return 0;
 //Measuring
   auto dt=dtu*1.0e-6;
   auto wrps=2*M_PI/dt;
-  if(tusec==0){
-    revs=iprof=iflag=zflag=0;
+  if(revs==0){
+    iprof=iflag=zflag=0;
     wmax=wh=wro=wrps;
     bh=0;
     setPol(PRM_ReadData(5),0);
   }
   revs++;
   if(wmax<wrps) wmax=wrps;
-  auto tmsec=(tusec+=dtu)/1000;
   auto uat=(float)otu/dtu*PRM_ReadData(4)/(8*M_PI); //duty/Tau
   uint8_t nloop=dtu/500;
   if(nloop<2) nloop=2;
@@ -107,7 +112,6 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
   wro=wrps;
   float dbh=(bh-bho)/dt;
 //Logger
-  logger::stage.stamp=tusec;
   logger::stage.omega=round(wrps);
   logger::stage.beta=satuate(round(bh),-32768,32767);
   switch(PRM_ReadData(3)){
@@ -118,7 +122,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
 
 //i-Block: base profile
   int32_t igrad;
-  auto ivalue=readProf((24),tmsec,iprof,igrad);
+  auto ivalue=readProf((24),dcore::tmsec,iprof,igrad);
   int sigma=0;
   switch(iflag){
     case 0:
@@ -134,11 +138,11 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         iflag=2;
         break;
       }
-      else if(tmsec>50 && bh<(int)PRM_ReadData100x(9)){
+      else if(dcore::tmsec>50 && bh<(int)PRM_ReadData100x(9)){
         iflag=4;
         wh=wrps;
         bh=ibbase=0;
-        itsw1=tmsec;
+        itsw1=dcore::tmsec;
         itsw2=itsw1+PRM_ReadData10x(12);
         setPol(PRM_ReadData(6),0);
         dcore::shift();  //RunLevel =>4
@@ -157,18 +161,18 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
     case 3:
       if(ivmax<ivalue) ivmax=ivalue;
       if(ibbase>bh) ibbase=bh;
-      else if(bh-ibbase>(int)PRM_ReadData100x(10) || tmsec>PRM_ReadData10x(11)){
+      else if(bh-ibbase>(int)PRM_ReadData100x(10) || dcore::tmsec>PRM_ReadData10x(11)){
         iflag=4;
         wh=wrps;
         bh=ibbase=0;
-        itsw1=tmsec;
+        itsw1=dcore::tmsec;
         itsw2=itsw1+(PRM_ReadData(12)<100? PRM_ReadData10x(12):(PRM_ReadData(12)%100*10)*wmax/PRM_ReadData10x(8));
         setPol(PRM_ReadData(6),0);
       }
       break;
     case 4:{
       int bref=PRM_ReadData100x(14);
-      bref=interp(bref,bref*PRM_ReadData(15)/100,itsw2-itsw1,tmsec-itsw1);
+      bref=interp(bref,bref*PRM_ReadData(15)/100,itsw2-itsw1,dcore::tmsec-itsw1);
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
       if(ffunc==NULL){
         fspan=PRM_ReadData10x(16);
@@ -176,17 +180,20 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
           uint8_t ival=PRM_ReadData(20);
           if(dcore::RunLevel>0) setTimeout.set(ffunc,ival);
           if(iflag<5){
-            logger::ALOG *p1=logger::data+logger::length()-1;  //tail of data
-            int d=p1->duty;
-            int n=1;
+            int val=0;
+            int n=0;
             int u1=(int)itsw1*1000;
             if(itsw2-itsw1>fspan) u1=((int)itsw2-(int)fspan)*1000;
-            for(;p1->stamp>u1;p1--,n++) d+=p1->duty;
-            fduty=d/n;
+            for(;;n++){
+              logger::ALOG *p1=logger::trace(n);
+              if(p1==NULL || p1->stamp<u1) break;
+              val+=p1->duty;
+            }
+            fduty=val/n;
           }
           int order=PRM_ReadData(18);
-          int tspan=(1000*100+(tusec/1000-itsw2)*PRM_ReadData(17))*(int)fspan/100;
-          fvalue=noef::analyze(tspan,order)>>PRM_ReadData(19);
+          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))*(int)fspan/100;
+          fvalue=logger::analyze(tspan,order)>>PRM_ReadData(19);
           fcema=ival;
           iflag=5;
         },itsw2-itsw1);
@@ -228,7 +235,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         zcmd=satuate(cm1,ivmax*PRM_ReadData(45)/100,zmax);
       }
       if(iflag>4){
-        zinteg=satuate(fduty,ivmax*PRM_ReadData(49)/100,zmax); //initial value valid ratio
+        zinteg=interp(fduty,ivalue,100,PRM_ReadData(49));
         zflag=5;
       }
       if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
@@ -247,11 +254,15 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
             float dk=zinteg*PRM_ReadData(54)*0.01;
             zinteg-=dk;
           }
-          zinteg=satuate(zinteg,zmin,zmax);
         }
         fcema=0;
       }
-      zcmd= stat>=0? zinteg:MAX(zinteg,ivmax*PRM_ReadData(53)/100);
+      zinteg=satuate(zinteg,zmin,zmax);
+      zmax=ivmax*PRM_ReadData(53)/100;
+      zmin= PRM_ReadData(55)==0? ivalue:fduty*PRM_ReadData(55)/100;
+      if(zmax>ivalue) zmax=ivalue;
+      if(zmin>ivalue) zmin=ivalue;
+      zcmd= stat<0? MAX(zinteg,zmax) : stat>0? MIN(zinteg,zmin) : zinteg;
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

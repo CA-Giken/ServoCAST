@@ -1,18 +1,11 @@
 #include <SetTimeout.h>
 #include <ServoCAST.h>
 #include <ServoCAST_nRF52.h>
-#include <ServoCAST_Algor.h>
 
-//params Algor.cpp
-uint8_t algor_param[]={
-  10,9,0,4,  150,200,70,0,
-  150,200,10,15,  20,150,30,33,
-  20,33,5,1,  50,0,0,0,
-  0,116,12,120,  25,117,33,110,
-  64,60,128,44,  193,38,255,33,
-  200,100,50,0,  10,40,30,0,
-  10,10,0,40,  70,0,5,0
-};
+//Algor.cpp
+extern void algor_prepare();
+extern uint16_t algor_update(int32_t time,int32_t duty);
+extern uint8_t algor_param[8*7];
 
 void setup() {
   Serial.begin(115200);

@@ -185,7 +185,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
             int u1=(int)itsw1*1000;
             if(itsw2-itsw1>fspan) u1=((int)itsw2-(int)fspan)*1000;
             for(;;n++){
-              logger::ALOG *p1=logger::trace(n);
+              logger::ALOG *p1=logger::trace(-n-1);
               if(p1==NULL || p1->stamp<u1) break;
               val+=p1->duty;
             }

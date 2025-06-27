@@ -30,7 +30,6 @@ void setup() {
     },
     [](){//end callback 
       ble::logdump();
-      logger::dump();
     }
   );
 
@@ -55,5 +54,6 @@ void loop() {
   if(setTimeout.spinOnce()==NULL){
     if(millis()>500) dcore::sleep(10);
     NRF_WDT->RR[0]=WDT_RR_RR_Reload;
+    logger::sweep();
   }
 }

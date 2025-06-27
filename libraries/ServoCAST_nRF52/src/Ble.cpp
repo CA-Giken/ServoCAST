@@ -58,15 +58,15 @@ namespace ble{
       long i=0,srev=0,stm=0,sdt=0,spwm=0,stens=0;
       long sval=0;
       for(;i<3;i++,sweep_logger++){
-        if(sweep_logger>=logger::length()) break;
-        logger::ALOG alog=logger::data[sweep_logger];
+        logger::ALOG *alog=logger::trace(sweep_logger);
+        if(alog==NULL) break;
         srev+=sweep_logger;
-        stm+=alog.stamp/1000;
-        sdt+=alog.interval;
-        spwm+=alog.duty;
+        stm+=alog->stamp/1000;
+        sdt+=alog->interval;
+        spwm+=alog->duty;
 //        spwm+=alog.cmd;
-        sval+=alog.eval;
-        stens+=alog.beta;
+        sval+=alog->eval;
+        stens+=alog->beta;
       }
       if(i>0){
         uint16_t *p=(uint16_t *)sweep_buf;
@@ -83,7 +83,7 @@ namespace ble{
           notifyCharacteristic.writeValue(sweep_buf,10);
         },0);
       }
-      if(sweep_logger<logger::length()){
+      if(logger::trace(sweep_logger)!=NULL){
         sweep_queue=setTimeout.set(sweep_callback,20);
       }
       else sweep_logger=-1;
@@ -124,7 +124,7 @@ namespace ble{
     }
   }
   void logdump(){
-    if(flag_connect && logger::length()>20){
+    if(flag_connect && logger::trace(20)!=NULL){
       sweep_logger=0;
       sweep_queue=setTimeout.set(sweep_callback,10);
     }

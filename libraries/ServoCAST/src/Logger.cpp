@@ -2,13 +2,12 @@
 #include "Logger.h"
 #include <SetTimeout.h>
 
-#define WSAMP 150   //sampling window size
+#define BUFMIN 150   //minimum window size
 
 namespace logger{
 #ifdef TARGET_NRF52840
   static struct ALOG buf[1000];
   void ALOG::print(){
-    Serial.print("$$ ");
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");
     Serial.print(beta); Serial.print(" ");
@@ -22,9 +21,8 @@ namespace logger{
 #endif
 #ifdef _RENESAS_RA_
 #define RINGBUF
-  static struct ALOG buf[200];
+  static struct ALOG buf[BUFMIN];
   void ALOG::print(){
-    Serial.print("$$ ");
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");
     Serial.print(beta); Serial.print(" ");
@@ -33,34 +31,33 @@ namespace logger{
 #endif
   static struct ALOG *data=buf;
   struct ALOG stage;
-  static int32_t tzero,tdmp;
-  static int dcount=0;
+  static int32_t tzero;
+  int16_t length;
+  static int16_t nsweep;
   void clear(){
     memset(&stage,0,sizeof(stage));
     stage.stamp=0xFFFFFFFF;
   }
-  int limit(){
+  inline int limit(){
     return sizeof(buf)/sizeof(buf[0]);
   }
   void start(){
     clear();
-    dcount=0;
     tzero=micros();
-    tdmp=0;
+    length=nsweep=0;
   }
   void latch(){
     if(stage.stamp==0xFFFFFFFF) stage.stamp=micros()-tzero;
-    if(dcount<limit()) buf[dcount++]=stage;
+    buf[length%limit()]=stage;
+    length++;
     stage.stamp=0xFFFFFFFF;
   }
   ALOG *trace(int index){
-    if(index<0){
-      int n=dcount+index;
-      return n<0? NULL:buf+n;
-    }
-    else return index>=dcount? NULL:buf+index;
+    if(index>=length) return NULL;
+    else if(index>(int)length-limit()) return buf+(index%limit());
+    else return NULL;
   }
-  inline int variation(int *dat,int samp){
+  int variation(int *dat,int samp){
     float sig=0;
     for(int i=0;i<samp;i++){
       int d=dat[i];
@@ -68,21 +65,22 @@ namespace logger{
     }
     return sqrt(sig/samp);
   }
-  int N(int nsamp,int dim){
-    if(logger::trace(-nsamp)==NULL) return -1;  //buffer not enough
-    int cval[WSAMP];
-    for(int i=-nsamp,j=0;i<0;i++,j++){
-      cval[j]=logger::trace(i)->beta;
+  int N(int n1,int dim){
+    int cval[BUFMIN];
+    int n2=length-n1;
+    for(int i=0;i<n2;i++){
+      cval[i]=logger::trace(i+n1)->beta;
     }
     double coef[POLYNOMINAL];
-    int nofs=approx(dim,cval,nsamp,coef);
+    n2-=n1;
+    int nofs=approx(dim,cval,n2,coef);
     auto neq=[&](double x){
       double y=0;
       x=(x-nofs)/nofs;
       for(int i=dim-1;i>=0;i--) y=y*x+coef[i];
       return y;
     };
-    for(int i=0;i<nsamp;i++){
+    for(int i=0;i<n2;i++){
       int cc=neq(i);
       int cv=cval[i];
       cval[i]=(cv-cc);
@@ -90,38 +88,35 @@ namespace logger{
       printf("%lu %d %d %d %d %d %d\n",pv[i].stamp,pv[i].beta,pv[i].sigma,pv[i].duty,cv,cc,cval[i]);
 #endif
     }
-    float sig=variation(cval,nsamp);
+    float sig=variation(cval,n2);
     return sig;
   }
   int analyze(int samp,int dim){
     if(samp<1000)   //"samp" defined as data count, else as interval in micro second
-      return N(samp,dim);
+      return N(length-samp,dim);
 
-    int ts0=logger::trace(-1)->stamp;
-    int vsamp=0;
-    for(int n=-1;;n--){
-      logger::ALOG *p=logger::trace(n);
+    int n1=length-1;
+    logger::ALOG *p=logger::trace(n1);
+    if(p==NULL) return -1;
+    int ts2=p->stamp;
+    for(;;n1--){
+      p=logger::trace(n1);
       if(p==NULL) return -1;
-      if(ts0-p->stamp > samp) break;
-      vsamp++;
+      if(ts2 - p->stamp > samp) break;
     }
-    if(vsamp>1) return N(vsamp,dim);
-    else return -1;
+    return N(n1,dim);
   }
   void sweep(){
-    if(!Serial) return;
-    ALOG *p=trace(-1);
-    if(p==NULL) return;
-    else if(p->stamp<=tdmp) return;
-    int ntr=-1;
-    for(;;ntr--){
-      p=trace(ntr-1);
-      if(p==NULL || p->stamp<=tdmp) break;
-    }
-    for(;ntr<0;ntr++){
-      p=trace(ntr);
-      p->print();
-      tdmp=p->stamp;
+    if(nsweep>=length) return;
+    ALOG *p=trace(nsweep++);
+    if(Serial){
+      Serial.print("$$ ");
+      Serial.print(nsweep);
+      if(p!=NULL){
+        Serial.print(" ");
+        p->print();
+      }
+      else Serial.println();
     }
   }
 }

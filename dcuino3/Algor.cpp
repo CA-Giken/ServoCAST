@@ -37,6 +37,7 @@ static int32_t fvalue;
 static uint16_t fduty;
 static void (*ffunc)();
 static uint16_t fspan;
+static uint16_t fdlen;
 static uint8_t fcema;
 
 /**************************************************************************/
@@ -112,7 +113,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
   wro=wrps;
   float dbh=(bh-bho)/dt;
 //Logger
-  logger::stage.omega=round(wrps);
+// logger::stage.omega=round(wrps);
   logger::stage.beta=satuate(round(bh),-32768,32767);
   switch(PRM_ReadData(3)){
     case 0: logger::stage.eval=satuate(iflag*20,0,255); break;
@@ -129,7 +130,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       iflag=1;
       ivmax=ivalue;
       ibbase=bh;
-      fvalue=fduty=fcema=0;
+      fvalue=fduty=fdlen=fcema=0;
       ffunc=NULL;
     case 1:
       if(ivmax<ivalue) ivmax=ivalue;
@@ -178,22 +179,24 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         fspan=PRM_ReadData10x(16);
         setTimeout.set(ffunc=[](){
           uint8_t ival=PRM_ReadData(20);
-          if(dcore::RunLevel>0) setTimeout.set(ffunc,ival);
+          if(logger::length>fdlen) setTimeout.set(ffunc,ival);
+          fdlen=logger::length;
+          int order=PRM_ReadData(18);
+          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))/100*(int)fspan;
+          fvalue=logger::analyze(tspan,order)>>PRM_ReadData(19);
           if(iflag<5){
             int val=0;
             int n=0;
-            int u1=(int)itsw1*1000;
-            if(itsw2-itsw1>fspan) u1=((int)itsw2-(int)fspan)*1000;
-            for(;;n++){
-              logger::ALOG *p1=logger::trace(-n-1);
-              if(p1==NULL || p1->stamp<u1) break;
-              val+=p1->duty;
+            int l=logger::length-1;
+            uint32_t ts1=logger::trace(l)->stamp-tspan;
+            for(;;n++,l--){
+              logger::ALOG *p=logger::trace(l);
+              if(p==NULL) break;   //expired buffer
+              if(p->stamp<ts1) break;
+              val+=p->duty;
             }
             fduty=val/n;
           }
-          int order=PRM_ReadData(18);
-          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))*(int)fspan/100;
-          fvalue=logger::analyze(tspan,order)>>PRM_ReadData(19);
           fcema=ival;
           iflag=5;
         },itsw2-itsw1);
@@ -259,10 +262,10 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       }
       zinteg=satuate(zinteg,zmin,zmax);
       zmax=ivmax*PRM_ReadData(53)/100;
-      zmin= PRM_ReadData(55)==0? ivalue:fduty*PRM_ReadData(55)/100;
+      zmin=interp(ivalue,fduty,100,PRM_ReadData(55));
       if(zmax>ivalue) zmax=ivalue;
       if(zmin>ivalue) zmin=ivalue;
-      zcmd= stat<0? MAX(zinteg,zmax) : stat>0? MIN(zinteg,zmin) : zinteg;
+      zcmd= stat<0? MAX(zinteg,zmax) : MIN(zinteg,zmin);
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

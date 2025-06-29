@@ -455,7 +455,6 @@ void log_pre(){
   log_lat=micros();
   logger::stage.stamp=dcore::tusec;
   logger::stage.latency=log_lat-sens::Tm;
-  logger::stage.latency=log_lat-sens::Tm;
   logger::stage.interval=sens::Interval;
   logger::stage.mode=dcore::RunLevel;
   logger::stage.duty=((uint32_t)pwm::Ton<<8)/sens::Interval;

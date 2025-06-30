@@ -6,7 +6,7 @@
 
 namespace logger{
 #ifdef TARGET_NRF52840
-  static struct ALOG buf[1000];
+  static struct ALOG buf[BUFMIN];
   void ALOG::print(){
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");
@@ -67,20 +67,19 @@ namespace logger{
   }
   int N(int n1,int dim){
     int cval[BUFMIN];
-    int n2=length-n1;
-    for(int i=0;i<n2;i++){
-      cval[i]=logger::trace(i+n1)->beta;
+    int nsamp=length-n1;
+    for(int i=0;i<nsamp;i++){
+      cval[i]=logger::trace(n1+i)->beta;
     }
     double coef[POLYNOMINAL];
-    n2-=n1;
-    int nofs=approx(dim,cval,n2,coef);
+    int nofs=approx(dim,cval,nsamp,coef);
     auto neq=[&](double x){
       double y=0;
       x=(x-nofs)/nofs;
       for(int i=dim-1;i>=0;i--) y=y*x+coef[i];
       return y;
     };
-    for(int i=0;i<n2;i++){
+    for(int i=0;i<nsamp;i++){
       int cc=neq(i);
       int cv=cval[i];
       cval[i]=(cv-cc);
@@ -88,7 +87,7 @@ namespace logger{
       printf("%lu %d %d %d %d %d %d\n",pv[i].stamp,pv[i].beta,pv[i].sigma,pv[i].duty,cv,cc,cval[i]);
 #endif
     }
-    float sig=variation(cval,n2);
+    float sig=variation(cval,nsamp);
     return sig;
   }
   int analyze(int samp,int dim){

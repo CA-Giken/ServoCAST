@@ -30,6 +30,7 @@ static uint16_t itsw2; //time switching from mode 2 to 3
 //controls
 static uint8_t zflag,zovrd;
 static float zinteg;
+static uint8_t zlow;
 //table
 static uint8_t tbl_index;
 //Ocillation analyzer
@@ -45,9 +46,10 @@ static int satuate(int val,int lo =0, int hi =255){
   return MIN(hi,MAX(lo,val));
 }
 static int interp(int y1,int y2,int dx,int w){
-  if(w<0) return y1;
-  else if(w>dx) return y2;
-  else return (y2*w+y1*(dx-w))/dx;
+//  if(w<0) return y1;
+//  else if(w>dx) return y2;
+//  else
+  return (y2*w+y1*(dx-w))/dx;
 }
 static int readTbl4k(int p,int w,int32_t &dec){
   auto x1=PRM_ReadData(p)<<4;
@@ -238,7 +240,8 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         zcmd=satuate(cm1,ivmax*PRM_ReadData(45)/100,zmax);
       }
       if(iflag>4){
-        zinteg=interp(fduty,ivalue,100,PRM_ReadData(49));
+        zinteg=interp(ivalue,fduty,100,PRM_ReadData(49));
+        zlow=satuate(interp(ivalue,fduty,100,PRM_ReadData(50)),zmin,zmax);
         zflag=5;
       }
       if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
@@ -248,24 +251,21 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
     case 5:{ //Steady state(Tri-state-control)
       int refl=PRM_ReadData(51);  //fvalue low
       int refh=PRM_ReadData(52);  //fvalue high
-      int stat= fvalue>refh? 1: fvalue<refl? -1:0;
+//      int stat= fvalue>refh? 1: fvalue<refl? -1:0;
+      int stat= fvalue>refl? 1: -1;
       if(fcema){  //update zinteg
-        if(stat>=0){
-          float dz=igrad*0.001*fcema*zinteg/(int)ivalue;
-          zinteg+=dz;
+//        if(stat>=0){
+//          float dz=igrad*0.001*fcema*zinteg/(int)ivalue;
+//          zinteg+=dz;
           if(stat>0){
             float dk=zinteg*PRM_ReadData(54)*0.01;
             zinteg-=dk;
           }
-        }
+//        }
         fcema=0;
       }
       zinteg=satuate(zinteg,zmin,zmax);
-      zmax=ivmax*PRM_ReadData(53)/100;
-      zmin=interp(ivalue,fduty,100,PRM_ReadData(55));
-      if(zmax>ivalue) zmax=ivalue;
-      if(zmin>ivalue) zmin=ivalue;
-      zcmd= stat<0? MAX(zinteg,zmax) : MIN(zinteg,zmin);
+      zcmd = stat>=0? MIN(zlow,zinteg):zinteg;
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

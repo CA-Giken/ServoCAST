@@ -6,7 +6,7 @@
 
 namespace logger{
 #ifdef TARGET_NRF52840
-  static struct ALOG buf[BUFMIN];
+  static struct ALOG buf[1440];
   void ALOG::print(){
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");

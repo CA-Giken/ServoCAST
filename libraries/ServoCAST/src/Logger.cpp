@@ -108,14 +108,12 @@ namespace logger{
   void sweep(){
     if(nsweep>=length) return;
     ALOG *p=trace(nsweep++);
-    if(Serial){
-      Serial.print("$$ ");
-      Serial.print(nsweep);
-      if(p!=NULL){
-        Serial.print(" ");
-        p->print();
-      }
-      else Serial.println();
+    Serial.print("$$ ");
+    Serial.print(nsweep);
+    if(p!=NULL){
+      Serial.print(" ");
+      p->print();
     }
+    else Serial.println();
   }
 }

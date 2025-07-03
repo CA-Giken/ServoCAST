@@ -30,10 +30,10 @@ void setup() {
     },
     [](){//end callback 
       ble::logdump();
+      digitalWrite(LEDR,HIGH);
+      digitalWrite(LEDG,HIGH);
     }
   );
-
-//  while (!Serial);
 
   ble::run(
     "arDCino",  //device name 
@@ -41,18 +41,24 @@ void setup() {
     "20024246-f5b0-e881-09ab-42000ba24f83",  //request uuid
     "20054246-f5b0-e881-09ab-42000ba24f83"   //notification uuid
   );
-  ble::led_pin=LED_PWR;
+  ble::led_pin=LEDB;
 #if defined(ARDUINO_SEEED_XIAO_NRF52840) || defined(ARDUINO_SEEED_XIAO_NRF52840_SENSE)
   ble::led_invert=true;
 #endif
-  pinMode(LEDB,INPUT);
-  pinMode(LED_PWR, OUTPUT);
-  digitalWrite(LED_PWR,HIGH);//Power LED Turn off
+  pinMode(LEDR,OUTPUT);
+  pinMode(LEDG,OUTPUT);
+  pinMode(LEDB,OUTPUT);
+  digitalWrite(LEDR,HIGH);
+  digitalWrite(LEDG,HIGH);
+  digitalWrite(LEDB,LOW);
+  setTimeout.set([]{
+    digitalWrite(LEDB,HIGH);//Power LED Turn off
+  },1000);
 }
 
 void loop() {
   if(setTimeout.spinOnce()==NULL){
-    if(millis()>500) dcore::sleep(10);
+    if(millis()>100 && dcore::RunLevel==0) dcore::sleep(10);
     NRF_WDT->RR[0]=WDT_RR_RR_Reload;
     logger::sweep();
   }

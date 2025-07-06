@@ -2,7 +2,7 @@
 #include "Logger.h"
 #include <SetTimeout.h>
 
-#define BUFMIN 150   //minimum window size
+#define BUFMIN 200   //minimum window size
 
 namespace logger{
 #ifdef TARGET_NRF52840
@@ -57,7 +57,7 @@ namespace logger{
     else if(index>(int)length-limit()) return buf+(index%limit());
     else return NULL;
   }
-  int variation(int *dat,int samp){
+  template <typename buffer_t> float variation(buffer_t *dat,int samp){
     float sig=0;
     for(int i=0;i<samp;i++){
       int d=dat[i];
@@ -65,14 +65,15 @@ namespace logger{
     }
     return sqrt(sig/samp);
   }
-  int N(int n1,int dim){
-    int cval[BUFMIN];
+  float N(int n1,int dim,int wgh){
+    int16_t cval[BUFMIN];
     int nsamp=length-n1;
+    if(nsamp>BUFMIN) nsamp=BUFMIN;
     for(int i=0;i<nsamp;i++){
       cval[i]=logger::trace(n1+i)->beta;
     }
     double coef[POLYNOMINAL];
-    int nofs=approx(dim,cval,nsamp,coef);
+    int nofs=approx<int16_t>(dim,cval,nsamp,wgh,coef);
     auto neq=[&](double x){
       double y=0;
       x=(x-nofs)/nofs;
@@ -87,23 +88,22 @@ namespace logger{
       printf("%lu %d %d %d %d %d %d\n",pv[i].stamp,pv[i].beta,pv[i].sigma,pv[i].duty,cv,cc,cval[i]);
 #endif
     }
-    float sig=variation(cval,nsamp);
+    float sig=variation<int16_t>(cval,nsamp);
     return sig;
   }
-  int analyze(int samp,int dim){
+  float analyze(int samp,int dim,int wgh){
     if(samp<1000)   //"samp" defined as data count, else as interval in micro second
-      return N(length-samp,dim);
+      return N(length-samp,dim,wgh);
 
     int n1=length-1;
     logger::ALOG *p=logger::trace(n1);
-    if(p==NULL) return -1;
     int ts2=p->stamp;
     for(;;n1--){
       p=logger::trace(n1);
-      if(p==NULL) return -1;
+      if(p==NULL) break;
       if(ts2 - p->stamp > samp) break;
     }
-    return N(n1,dim);
+    return N(n1,dim,wgh);
   }
   void sweep(){
     if(nsweep>=length) return;

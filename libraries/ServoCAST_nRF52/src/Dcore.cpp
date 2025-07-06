@@ -136,11 +136,16 @@ namespace pwm{//methods for pwm
           if(tnex>2*T_WAIT) Tirqe=tnex-T_WAIT;
         }
         else{
-          ITimer1.setFrequency(1,[](){});
           Block=true;
           Ton=Tact;
           Tact=0;
-          sens::start();
+          if(tnex>2*T_WAIT){
+            ITimer1.setInterval(tnex-T_WAIT,[](){
+              ITimer1.setFrequency(1,[](){});
+              sens::start();
+            });
+          }
+          else sens::start();
         }
       }
       else{

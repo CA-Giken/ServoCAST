@@ -24,6 +24,7 @@ namespace logger{
     uint32_t stamp;
     uint8_t duty;
     uint8_t eval;
+    uint8_t cmd;
     int16_t beta;
     void print();
   };
@@ -34,9 +35,9 @@ namespace logger{
   void latch();
   int limit();
   ALOG *trace(int index);
-  int variation(int *dat,int samp);
-  int N(int nsamp,int dim);
-  int analyze(int samp,int dim);
+  float variation(int *dat,int samp);
+  float N(int nsamp,int dim,int wgh=100);
+  float analyze(int samp,int dim,int wgh=100);
   void sweep();
 }
 

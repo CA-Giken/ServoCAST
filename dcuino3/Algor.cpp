@@ -30,16 +30,16 @@ static uint16_t itsw2; //time switching from mode 2 to 3
 //controls
 static uint8_t zflag,zovrd;
 static float zinteg;
-static uint8_t zlow,zrefl,zrefh;
+static uint8_t zrefl,zrefh;
 //table
 static uint8_t tbl_index;
 //Ocillation analyzer
 static int32_t fvalue;
-static uint16_t fduty;
+static uint16_t fduty,fcount;
 static void (*ffunc)();
-static uint16_t fspan;
 static uint16_t fdlen;
 static uint8_t fcema;
+#define FSAMP 50   //50msec sampling
 
 /**************************************************************************/
 static int satuate(int val,int lo =0, int hi =255){
@@ -131,7 +131,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       iflag=1;
       ivmax=ivalue;
       ibbase=bh;
-      fvalue=fduty=fdlen=fcema=0;
+      fvalue=fduty=fcount=fdlen=fcema=0;
       ffunc=NULL;
     case 1:
       if(ivmax<ivalue) ivmax=ivalue;
@@ -176,29 +176,17 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       int bref=PRM_ReadData100x(14);
       bref=interp(bref,bref*PRM_ReadData(15)/100,itsw2-itsw1,dcore::tmsec-itsw1);
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
+      fduty+=logger::trace(logger::length-1)->cmd;
+      fcount++;
       if(ffunc==NULL){
-        fspan=PRM_ReadData10x(16);
         setTimeout.set(ffunc=[](){
-          uint8_t ival=PRM_ReadData(20);
-          if(logger::length>fdlen) setTimeout.set(ffunc,ival);
+          if(logger::length>fdlen) setTimeout.set(ffunc,FSAMP);  //50msec sampling
           fdlen=logger::length;
-          int order=PRM_ReadData(18);
-          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))/100*(int)fspan;
-          fvalue=logger::analyze(tspan,order)>>PRM_ReadData(19);
-          if(iflag<5){
-            int val=0;
-            int n=0;
-            int l=logger::length-1;
-            uint32_t ts1=logger::trace(l)->stamp-tspan;
-            for(;;n++,l--){
-              logger::ALOG *p=logger::trace(l);
-              if(p==NULL) break;   //expired buffer
-              if(p->stamp<ts1) break;
-              val+=p->duty;
-            }
-            fduty=val/n;
-          }
-          fcema=ival;
+          int fspan=PRM_ReadData10x(16);
+          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))/100*fspan;
+          fvalue=logger::analyze(tspan,PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
+          if(iflag<5) fduty/=fcount;
+          fcema=FSAMP;
           iflag=5;
         },itsw2-itsw1);
       }
@@ -209,7 +197,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
 
   int zcmd=ivalue;
   int zmax=satuate(ivmax*zovrd/100,0,ivalue);
-  int zmin=ivmax*PRM_ReadData(48)/100;
+  int zmin=ivmax*PRM_ReadData(44)/100;
   switch(zflag){
     case 0:   //speed is low
       zflag=1;
@@ -232,17 +220,22 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       int cm0=zcmd;
       if(sigma){
         zinteg+=bh*dt/2;
-        zcmd=ivmax*PRM_ReadData(44)/100;    //low brake;
+        zcmd=zmin;    //low brake
       }
       int cm1=satuate(cm0-cm0*zinteg/100*PRM_ReadData(46)/100,0,zmax);  //high brake
       if(!sigma){
         zcmd=satuate(cm1,ivmax*PRM_ReadData(45)/100,zmax);
       }
       if(iflag>4){
-        zinteg=satuate(fduty*PRM_ReadData(49)/100,zmin,zmax);
-        zlow=satuate(fduty*PRM_ReadData(50)/100,zmin,zmax);
-        zrefl=PRM_ReadData(51);  //fvalue lo
-        zrefh=interp(PRM_ReadData(52),zrefl,100-PRM_ReadData(53),fduty*100/zmax-PRM_ReadData(53));  //fvalue hi
+        if(PRM_ReadData(50)==PRM_ReadData(51)){
+          zinteg=satuate(fduty,zmin,250);
+        }
+        else{
+          int kd=interp(PRM_ReadData(48),PRM_ReadData(49),PRM_ReadData(51)-PRM_ReadData(50),(int)zinteg-PRM_ReadData(50));
+          zinteg=zmax*kd/100;
+        }
+        zrefl=PRM_ReadData(52);  //fvalue lo
+        zrefh=PRM_ReadData(53);  //fvalue hi
         zflag=5;
       }
       if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
@@ -250,13 +243,14 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       break;
     }
     case 5:{ //Steady state(Tri-state-control)
+      int zspan=(int)zrefh-(int)zrefl;
+      int zerr=(int)fvalue-(int)zrefl;
       if(fcema){  //update zinteg
-        float dz=igrad*interp(0,100,zrefh-zrefl,(int)fvalue-zrefl)*fcema*zinteg/(int)ivalue/100000;
+        float dz=igrad*interp(0,100,zspan,zerr)*fcema*zinteg/(int)ivalue/100000;
         zinteg+=dz;
         fcema=0;
       }
-      zinteg=satuate(zinteg,zmin,zmax);
-      zcmd = fvalue>=zrefh? MIN(zlow,zinteg):zinteg;
+      zcmd=(int)zinteg;
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

@@ -1,10 +1,21 @@
-#include "Arduino.h"
 #include "SetTimeout.h"
 
-#ifdef INC_FREERTOS_H
+#if defined(INC_FREERTOS_H) || defined(_ARC_FREERTOS)
+
+#ifdef INC_FREERTOS_H    //ESP32
 #include <freertos/FreeRTOS.h>
+#endif
+
+#ifdef _ARC_FREERTOS     //UNO R4
+#undef configUSE_MUTEXES
+#define configUSE_MUTEXES (1)
+#undef configSUPPORT_DYNAMIC_ALLOCATION
+#define configSUPPORT_DYNAMIC_ALLOCATION (1)
+#include <Arduino_FreeRTOS.h>
+#endif
+
 SemaphoreHandle_t xMutex = NULL;
-inline void lock_init(){
+void lock_init(){
 	xMutex = xSemaphoreCreateMutex();
 }
 inline void lock_on(){
@@ -19,28 +30,12 @@ inline void lock_off(){
 #ifdef ARDUINO_ARCH_MBED
 #include <rtos.h>
 static rtos::Mutex mutex;
-inline void lock_init(){
-}
+void lock_init(){}
 inline void lock_on(){
   mutex.lock();
 }
 inline void lock_off(){
   mutex.unlock();
-}
-#endif
-
-#ifdef ARC_FREERTOS_H
-#include <Arduino_FreeRTOS.h>
-SemaphoreHandle_t xMutex = NULL;
-inline void lock_init(){
-	xMutex = xSemaphoreCreateMutex();
-}
-inline void lock_on(){
-	const TickType_t xTicksToWait=1000UL;
-	BaseType_t xStatus = xSemaphoreTake(xMutex, xTicksToWait);
-}
-inline void lock_off(){
-	xSemaphoreGive(xMutex);	
 }
 #endif
 

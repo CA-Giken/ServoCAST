@@ -133,14 +133,14 @@ namespace pwm{//methods for pwm
           on();
           ITimer1.setInterval(Treq,intr_off2);
           tnex-=Treq;
-          if(tnex>2*T_WAIT) Tirqe=tnex-T_WAIT;
+          if(tnex>T_WAIT) Tirqe=tnex;
         }
         else{
           Block=true;
           Ton=Tact;
           Tact=0;
-          if(tnex>2*T_WAIT){
-            ITimer1.setInterval(tnex-T_WAIT,[](){
+          if(tnex>T_WAIT){
+            ITimer1.setInterval(tnex,[](){
               ITimer1.setFrequency(1,[](){});
               sens::start();
             });

@@ -30,12 +30,10 @@ static uint16_t itsw2; //time switching from mode 2 to 3
 //controls
 static uint8_t zflag,zovrd;
 static float zinteg;
-static uint8_t zrefl,zrefh;
 //table
 static uint8_t tbl_index;
 //Ocillation analyzer
 static int32_t fvalue;
-static uint16_t fduty,fcount;
 static void (*ffunc)();
 static uint16_t fdlen;
 static uint8_t fcema;
@@ -77,6 +75,17 @@ static int readProf(int prof_tbl,int prof_tmsec,uint8_t &idx,int32_t &dec){
 }
 static int readProf(int prof_tbl,int idx){
   return PRM_ReadData(prof_tbl+(idx<<1)+1);
+}
+static int readForp(int prof,int w){
+  auto y1=PRM_ReadData(prof+1);
+  auto y2=PRM_ReadData(prof+3);
+  while(!(w<=y1 && w>y2)){
+    y1=y2;
+    prof+=2;
+    y2=PRM_ReadData(prof+3);
+  }
+  int dx=PRM_ReadData(prof+2)-PRM_ReadData(prof);
+  return dx>0? ((int)y2-(int)y1)*1000/dx:0;
 }
 static void setPol(float polr,float poli){
   hcoef1=2*polr;
@@ -131,7 +140,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       iflag=1;
       ivmax=ivalue;
       ibbase=bh;
-      fvalue=fduty=fcount=fdlen=fcema=0;
+      fvalue=fdlen=fcema=0;
       ffunc=NULL;
     case 1:
       if(ivmax<ivalue) ivmax=ivalue;
@@ -168,30 +177,38 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         wh=wrps;
         bh=ibbase=0;
         itsw1=dcore::tmsec;
-        itsw2=itsw1+(PRM_ReadData(12)<100? PRM_ReadData10x(12):(PRM_ReadData(12)%100*10)*wmax/PRM_ReadData10x(8));
+        itsw2=itsw1+PRM_ReadData10x(12);
         setPol(PRM_ReadData(6),0);
       }
       break;
     case 4:{
-      int bref=PRM_ReadData100x(14);
-      bref=interp(bref,bref*PRM_ReadData(15)/100,itsw2-itsw1,dcore::tmsec-itsw1);
+      int bref=PRM_ReadData100x(14)*interp(100,PRM_ReadData(15),itsw2-itsw1,dcore::tmsec-itsw1)/100;
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
-      fduty+=logger::trace(logger::length-1)->cmd;
-      fcount++;
       if(ffunc==NULL){
+        setTimeout.set([](){
+          int l=logger::length-1;
+          uint32_t ts1=logger::trace(l)->stamp-PRM_ReadData10000x(48);
+          int n=0,val=0;
+          for(;;n++,l--){
+            logger::ALOG *p=logger::trace(l);
+            if(p==NULL) break;
+            if(p->stamp<ts1) break;
+            val+=p->cmd;
+          }
+          fvalue=val/n;
+          iflag=5;
+        },PRM_ReadData10x(12));
         setTimeout.set(ffunc=[](){
           if(logger::length>fdlen) setTimeout.set(ffunc,FSAMP);  //50msec sampling
           fdlen=logger::length;
-          int fspan=PRM_ReadData10x(16);
-          int tspan=(1000*100+(dcore::tusec/1000-itsw2)*PRM_ReadData(17))/100*fspan;
-          fvalue=logger::analyze(tspan,PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
-          if(iflag<5) fduty/=fcount;
+          fvalue=logger::analyze(PRM_ReadData10000x(17),PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
           fcema=FSAMP;
-          iflag=5;
-        },itsw2-itsw1);
+        },PRM_ReadData10x(12)+PRM_ReadData10x(16));
       }
+      break;
     }
     case 5:
+      sigma=0;
       break;
   }
 
@@ -228,14 +245,13 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       }
       if(iflag>4){
         if(PRM_ReadData(50)==PRM_ReadData(51)){
-          zinteg=satuate(fduty,zmin,250);
+          zinteg=fvalue;
         }
         else{
           int kd=interp(PRM_ReadData(48),PRM_ReadData(49),PRM_ReadData(51)-PRM_ReadData(50),(int)zinteg-PRM_ReadData(50));
           zinteg=zmax*kd/100;
         }
-        zrefl=PRM_ReadData(52);  //fvalue lo
-        zrefh=PRM_ReadData(53);  //fvalue hi
+        fvalue=0;
         zflag=5;
       }
       if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
@@ -243,14 +259,20 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       break;
     }
     case 5:{ //Steady state(Tri-state-control)
-      int zspan=(int)zrefh-(int)zrefl;
-      int zerr=(int)fvalue-(int)zrefl;
       if(fcema){  //update zinteg
-        float dz=igrad*interp(0,100,zspan,zerr)*fcema*zinteg/(int)ivalue/100000;
-        zinteg+=dz;
+        float ki=satuate(fvalue*PRM_ReadData(54)/100,0,PRM_ReadData(55));
+        zinteg+=igrad*ki*zinteg/ivalue*fcema/100000;
         fcema=0;
       }
-      zcmd=(int)zinteg;
+      int tdhr=PRM_ReadData10000x(52)/2;
+      int cn=dcore::tusec/tdhr;
+      int tn=dcore::tusec%tdhr;
+      int an=PRM_ReadData(53)/2;
+      int kn=(cn&1)? interp(-an,an,tdhr,tn):interp(an,-an,tdhr,tn);
+      zcmd=satuate(zinteg*(100-kn)/100,zmin,243);
+//    zcmd=satuate(fvalue<PRM_ReadData(52)? zinteg:zinteg*PRM_ReadData(53)/100,zmin,zmax);
+//      float kp=satuate(fvalue*PRM_ReadData(52)/100,0,PRM_ReadData(53));
+//      zcmd=satuate(zinteg*(100-kp)/100,zmin,255);
       if(PRM_ReadData(3)==5) logger::stage.eval=satuate(zinteg,0,255);
       break;
     }

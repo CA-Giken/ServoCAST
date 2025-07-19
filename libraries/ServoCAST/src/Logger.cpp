@@ -1,6 +1,19 @@
-#include "Arduino.h"
 #include "Logger.h"
-#include <SetTimeout.h>
+#ifdef ARDUINO
+#include "Arduino.h"
+#else
+#include <string.h>
+#include <math.h>
+uint32_t micros(){
+  auto alog=logger::trace(logger::length-1);
+  return alog->stamp;
+}
+#endif
+
+#ifndef NULL
+#define NULL 0
+#endif
+
 
 #define BUFMIN 200   //minimum window size
 
@@ -8,6 +21,7 @@ namespace logger{
 #ifdef TARGET_NRF52840
   static struct ALOG buf[1440];
   void ALOG::print(){
+#ifdef ARDUINO
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");
     Serial.print(beta); Serial.print(" ");
@@ -17,16 +31,19 @@ namespace logger{
     Serial.print(latency); Serial.print(" ");
     Serial.print(omega); Serial.print(" ");
     Serial.println(cmd);
+#endif
   }
 #endif
 #ifdef _RENESAS_RA_
 #define RINGBUF
   static struct ALOG buf[BUFMIN];
   void ALOG::print(){
+#ifdef ARDUINO
     Serial.print(stamp); Serial.print(" ");
     Serial.print(duty); Serial.print(" ");
     Serial.print(beta); Serial.print(" ");
     Serial.println(eval);
+#endif
   }
 #endif
   static struct ALOG *data=buf;
@@ -106,6 +123,7 @@ namespace logger{
     return N(n1,dim,wgh);
   }
   void sweep(){
+#ifdef ARDUINO
     if(nsweep>=length) return;
     ALOG *p=trace(nsweep++);
     Serial.print("$$ ");
@@ -115,5 +133,6 @@ namespace logger{
       p->print();
     }
     else Serial.println();
+#endif
   }
 }

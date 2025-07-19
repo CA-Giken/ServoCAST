@@ -1,7 +1,9 @@
 #ifndef LUHEADERH
 #define LUHEADERH
 
-//#include <math.h>
+#ifndef ARDUINO
+#include <math.h>
+#endif
 //#include <stdint.h>
 //#include <stddef.h>
 

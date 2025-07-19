@@ -30,8 +30,6 @@ void setup() {
     },
     [](){//end callback 
       ble::logdump();
-      digitalWrite(LEDR,HIGH);
-      digitalWrite(LEDG,HIGH);
     }
   );
 
@@ -45,11 +43,9 @@ void setup() {
 #if defined(ARDUINO_SEEED_XIAO_NRF52840) || defined(ARDUINO_SEEED_XIAO_NRF52840_SENSE)
   ble::led_invert=true;
 #endif
-  pinMode(LEDR,OUTPUT);
-  pinMode(LEDG,OUTPUT);
+  pinMode(LEDR,INPUT);
+  pinMode(LEDG,INPUT);
   pinMode(LEDB,OUTPUT);
-  digitalWrite(LEDR,HIGH);
-  digitalWrite(LEDG,HIGH);
   digitalWrite(LEDB,LOW);
   setTimeout.set([]{
     digitalWrite(LEDB,HIGH);//Power LED Turn off

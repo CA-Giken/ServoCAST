@@ -1,9 +1,17 @@
 #ifndef _Logger_h
 #define _Logger_h
 
+#ifdef ARDUINO
 #include  "Arduino.h"
+#else
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned long uint32_t;
+typedef short int16_t;
+#endif
+
 #define   POLYNOMINAL 6
-#include  "napprox.h"
+#include  "../../CA_Math/napprox.h"
 
 namespace logger{
 #ifdef TARGET_NRF52840

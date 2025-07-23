@@ -1,4 +1,4 @@
-# Servo CAST  
+# AMB/Arduno meets Baitcaster  
 The open source technology for the control of Bait Casting Reels
 
 ## The Goals  

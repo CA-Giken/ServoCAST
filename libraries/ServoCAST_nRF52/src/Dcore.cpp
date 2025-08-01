@@ -209,6 +209,22 @@ namespace pwm{//methods for pwm
     else Count=99;  //Extend duration
     Block=false;
   }
+  void sweep(uint32_t duration){
+    Interval=Tpwm[LENGTH(Tpwm)-1];
+    Count=duration/Interval;
+    ITimer0.setInterval(Interval,[](){
+      if(Count==0) ITimer0.setInterval(1,[](){});
+      else on();
+    });
+    ITimer1.setInterval(Interval*Duty/256,[](){
+      off();
+      ITimer1.setInterval(Interval,[](){
+        off();
+        Count--;
+        if(Count==0) ITimer1.setInterval(1,[](){});
+      });
+    });
+  }
 }
 
 namespace debouncer{
@@ -352,7 +368,7 @@ namespace sens{
       wdt=setTimeout.set([](){
         Serial.println("sens wdt:RunLevel 1=>0");
         dcore::init();
-      },30);
+      },20);
       (*dcore::start_callback)();
       logger::start();
       break;
@@ -379,7 +395,7 @@ namespace sens{
         Serial.println("sens wdt:RunLevel 3=>0");
         (*dcore::end_callback)();
         dcore::init();
-      },30);
+      },20);
       break;
     case 5:
     case 6:
@@ -390,14 +406,14 @@ namespace sens{
       logger::latch();
       if(wdt!=0) setTimeout.clear(wdt);
       wdt=setTimeout.set([](){
-        Serial.println("sens wdt:RunLevel 6=>0");
-        (*dcore::end_callback)();
-        pwm::Duty=128;
+        pwm::Duty=170;
         stop();
 //        pwm::stop();
-//        pwm::start(1000000L);  //dcore::init will be invoked after this pwm sequence
-        setTimeout.set(dcore::init,1000);
-      },100);
+        pwm::sweep(1000000L);  //usec
+        setTimeout.set(dcore::init,1000);  //msec
+        Serial.println("sens wdt:RunLevel 6=>0");
+        (*dcore::end_callback)();
+      },20);
       break;
     }
     goto WAIT;

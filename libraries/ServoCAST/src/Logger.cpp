@@ -117,7 +117,10 @@ namespace logger{
     int ts2=p->stamp;
     for(;;n1--){
       p=logger::trace(n1);
-      if(p==NULL) break;
+      if(p==NULL){
+        n1++;
+        break;
+      }
       if(ts2 - p->stamp > samp) break;
     }
     return N(n1,dim,wgh);

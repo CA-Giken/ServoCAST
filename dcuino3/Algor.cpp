@@ -1,3 +1,4 @@
+#include "Dcore.h"
 //Macros
 #define MAX(a,b) ((a)>(b)? a:b)
 #define MIN(a,b) ((a)<(b)? a:b)
@@ -25,7 +26,8 @@ static float wmax,wh,bh,hcoef1,hcoef2,bf,wro;
 //profile
 static uint8_t iflag,iprof;
 static int16_t ivmax; //duty maximum over the profile
-static float ibbase; //bh minimum durling mode 1
+static float ibbase; //bh minimum for every mode
+static uint16_t itbase; //base time for every mode in msec
 static float ilngamm; //log gamma
 static uint32_t itugamm; //elapsed gamma time in usec
 static float idegamm; //gamma derivative
@@ -37,8 +39,8 @@ static uint8_t tbl_index;
 //Ocillation analyzer
 static int32_t fvalue;
 static void (*ffunc)();
-static uint16_t fdlen;
-#define FSAMP 50   //50msec sampling
+static uint16_t ftime;
+#define FSAMP 33   //msec or 30Hz sampling
 
 /**************************************************************************/
 static int satuate(int val,int lo =0, int hi =255){
@@ -139,9 +141,10 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
 // logger::stage.omega=round(wrps);
   logger::stage.beta=satuate(round(bh),-32768,32767);
   switch(PRM_ReadData(3)){
-    case 0: logger::stage.eval=satuate(iflag*20,0,255); break;
-    case 1: logger::stage.eval=satuate(dcore::RunLevel*20,0,255); break;
+    case 1: logger::stage.eval=satuate(iflag*20,0,255); break;
     case 4: logger::stage.eval=satuate(fvalue,0,255); break;
+    case 5: logger::stage.eval=satuate(ftime,0,255); break;
+    default: logger::stage.eval=satuate(dcore::RunLevel*20,0,255); break;
   }
 
 //i-Block: base profile
@@ -153,7 +156,8 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       iflag=1;
       ivmax=ivalue;
       ibbase=bh;
-      fvalue=fdlen=0;
+      itbase=dcore::tmsec;
+      fvalue=ftime=0;
       ffunc=NULL;
     case 1:
       if(ivmax<ivalue) ivmax=ivalue;
@@ -191,33 +195,28 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       }
       break;
     case 4:
+      setTimeout.set(ffunc=[](){
+        int t0=micros();
+        fvalue=logger::analyze(PRM_ReadData10000x(16)/idegamm,PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
+        ftime=((int)micros()-t0)/1000;
+        iflag=6;
+        if(dcore::RunLevel>0) setTimeout.set(ffunc,FSAMP);
+      },PRM_ReadData10x(12));
+      itbase=dcore::tmsec;
+      iflag=5;
     case 5:{
       int bref=PRM_ReadData100x(14);
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
-      if(ffunc==NULL){
-        setTimeout.set([](){
-          iflag=5;
-        },PRM_ReadData10x(12));
-        setTimeout.set(ffunc=[](){
-          if(logger::length>fdlen) setTimeout.set(ffunc,FSAMP);  //50msec sampling
-          fdlen=logger::length;
-          fvalue=logger::analyze(PRM_ReadData10000x(16)/idegamm,PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
-          iflag=6;
-        },PRM_ReadData10x(12)+PRM_ReadData10x(16));
-      }
-      if(iflag==5) itugamm+=dtu;
-      break;
     }
     case 6:
-      sigma=0;
-      idegamm-=ilngamm*idegamm*dt;
+      if(iflag==6) idegamm-=ilngamm*idegamm*dt;
       itugamm+=dtu*idegamm;
-      if(PRM_ReadData(3)==5) logger::stage.eval=satuate(itugamm/10000,0,255);
+      if(PRM_ReadData(3)==6) logger::stage.eval=satuate(itugamm/10000,0,255);
       break;
   }
 
   int zmax=satuate(ivmax*zovrd/100,0,ivmax);
-  int zmin=ivmax*PRM_ReadData(44)/100;
+  int zmin=readProf((24),7);
   int zcmd=zmax;
   switch(zflag){
     case 0:   //speed is low
@@ -238,33 +237,35 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       zcmd=satuate(zcmd,zmin,ivalue);
       break;
     case 4:
-    case 5:{  //Collision state(Sliding mode control)
-      int umax=satuate(zcmd,zmin,ivalue);
-      int umin=umax*PRM_ReadData(45)/100;
-      if(zinteg==0 || zinteg>umax) zinteg=umax;
+    case 5:{
+      int prof=satuate(zcmd,zmin,ivalue);
+      if(zinteg==0 || zinteg>prof) zinteg=prof;
       if(sigma){
-        zinteg-=bh*dt*PRM_ReadData(46)/100;
+        zinteg-=(bh*PRM_ReadData(46)/10000)*zinteg*dt;
       }
-      if(zinteg<umin) zinteg=umin;
+      int ilow=prof*PRM_ReadData(45)/100;
+      if(zinteg<ilow) zinteg=ilow;
       if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
-      if(iflag==4){
+      if(dcore::tmsec-itbase<PRM_ReadData10x(44)){  //Collision state(Sliding mode control)
         zcmd= sigma? zmin:zinteg;
         break;
       }
-      zflag=5;
+      if(iflag>5){
+        zinteg=interp(zinteg,prof,100,PRM_ReadData(47));
+      }
     }
     case 6:{
-      int fv=fvalue-(int)PRM_ReadData(56);
-      int ki=satuate(fv*(int)PRM_ReadData(57)/100,0,100);
-      zinteg+=(zinteg<ivalue? igrad*zinteg/ivalue : readGrad((24),dcore::tmsec,zinteg))*ki*dt*(1000/100);
-      int kp=satuate(fv*(int)PRM_ReadData(59)/100,0,PRM_ReadData(58));
-      int zp=satuate(zinteg*(100-kp)/100,zmin,zmax);  //P control
-      zcmd=MIN(zp,zinteg);
+      int er=fvalue-(int)PRM_ReadData(56);
+      int ki=satuate(er*(int)PRM_ReadData(57)/100,0,100);
+      zinteg+=(zinteg<ivalue? igrad*zinteg/ivalue : readGrad((24),dcore::tmsec,zinteg))*ki/100*dt;
+      er=fvalue-(int)PRM_ReadData(58);
+      int kp=satuate(er*(int)PRM_ReadData(59)/100,-PRM_ReadData(60),PRM_ReadData(60));
+      zcmd=satuate(zinteg*(100-kp)/100,zmin,zmax);  //P control
       int td=PRM_ReadData10000x(52)/2;  //dithering period
       int ad=PRM_ReadData10x(53)/2;  //dithering amplitude
       if((itugamm/td)&1) ad=-ad;
       int kd=interp(-ad,ad,td,(itugamm%td));
-      zcmd=satuate(zcmd-zmax*kd/1000,zmin,zmax);
+      zcmd=satuate(zcmd-zmax*kd/1000,10,245);
       zflag=iflag;
     }
   }

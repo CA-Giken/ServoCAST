@@ -9,14 +9,14 @@
 #include <ServoCAST.h>
 
 uint8_t algor_param[]={
-  10,9,153,4,  150,200,70,0,
-  150,200,10,15,  20,150,30,70,
-  20,50,5,1,  50,0,0,0,
-  0,116,12,120,  25,117,33,110,
-  64,60,128,44,  193,38,255,33,
-  200,100,100,0,  10,40,25,0,
-  10,10,0,20,  50,0,7,0,
-  0,0,0,0, 0,0,0,0
+  10,9,153,4,  90,200,70,0,
+  150,200,10,15,  25,31,30,0,
+  20,30,4,100,  100,0,0,0,
+  0,225,32,224,  41,157,51,103,
+  65,66,92,37,  188,34,255,33,
+  250,100,0,0,  30,30,100,0,
+  0,0,0,0,  20,30,0,0,
+  50,200,50,50, 60,0,0,0
 };
 
 //elapsed time
@@ -27,7 +27,6 @@ static float wmax,wh,bh,hcoef1,hcoef2,bf,wro;
 static uint8_t iflag,iprof;
 static int16_t ivmax; //duty maximum over the profile
 static float ibbase; //bh minimum for every mode
-static uint16_t itbase; //base time for every mode in msec
 static float ilngamm; //log gamma
 static uint32_t itugamm; //elapsed gamma time in usec
 static float idegamm; //gamma derivative
@@ -156,7 +155,6 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       iflag=1;
       ivmax=ivalue;
       ibbase=bh;
-      itbase=dcore::tmsec;
       fvalue=ftime=0;
       ffunc=NULL;
     case 1:
@@ -202,17 +200,16 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
         iflag=6;
         if(dcore::RunLevel>0) setTimeout.set(ffunc,FSAMP);
       },PRM_ReadData10x(12));
-      itbase=dcore::tmsec;
       iflag=5;
-    case 5:{
+    case 5:
+    case 6:{
       int bref=PRM_ReadData100x(14);
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
-    }
-    case 6:
       if(iflag==6) idegamm-=ilngamm*idegamm*dt;
       itugamm+=dtu*idegamm;
       if(PRM_ReadData(3)==6) logger::stage.eval=satuate(itugamm/10000,0,255);
       break;
+    }
   }
 
   int zmax=satuate(ivmax*zovrd/100,0,ivmax);
@@ -241,18 +238,19 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       int prof=satuate(zcmd,zmin,ivalue);
       if(zinteg==0 || zinteg>prof) zinteg=prof;
       if(sigma){
-        zinteg-=(bh*PRM_ReadData(46)/10000)*zinteg*dt;
+        int ki=interp(0,PRM_ReadData(45),PRM_ReadData10x(12),itugamm/1000);
+        zinteg-=(bh*ki/10000)*zinteg*dt;
+        int ilow=prof*PRM_ReadData(44)/100;
+        if(zinteg<ilow) zinteg=ilow;
+        zcmd=zmin;
       }
-      int ilow=prof*PRM_ReadData(45)/100;
-      if(zinteg<ilow) zinteg=ilow;
-      if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
-      if(dcore::tmsec-itbase<PRM_ReadData10x(44)){  //Collision state(Sliding mode control)
-        zcmd= sigma? zmin:zinteg;
-        break;
-      }
+      else zcmd=zinteg;
       if(iflag>5){
-        zinteg=interp(zinteg,prof,100,PRM_ReadData(47));
+        zinteg=interp(zinteg,prof,100,PRM_ReadData(46));
       }
+      zflag=iflag;
+      if(PRM_ReadData(3)==4) logger::stage.eval=satuate(zinteg,0,255);
+      break;
     }
     case 6:{
       int er=fvalue-(int)PRM_ReadData(56);
@@ -266,7 +264,7 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       if((itugamm/td)&1) ad=-ad;
       int kd=interp(-ad,ad,td,(itugamm%td));
       zcmd=satuate(zcmd-zmax*kd/1000,10,245);
-      zflag=iflag;
+      if(sigma && zcmd>zmin) zcmd=zmin;
     }
   }
   return zcmd;

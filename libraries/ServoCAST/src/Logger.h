@@ -43,7 +43,6 @@ namespace logger{
   void latch();
   int limit();
   ALOG *trace(int index);
-  float variation(int *dat,int samp);
   float N(int nsamp,int dim,int wgh=100);
   float analyze(int samp,int dim,int wgh=100);
   void sweep();

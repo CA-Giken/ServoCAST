@@ -39,7 +39,6 @@ static uint8_t tbl_index;
 static int32_t fvalue;
 static void (*ffunc)();
 static uint16_t ftime;
-#define FSAMP 33   //msec or 30Hz sampling
 
 /**************************************************************************/
 static int satuate(int val,int lo =0, int hi =255){
@@ -195,10 +194,10 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
     case 4:
       setTimeout.set(ffunc=[](){
         int t0=micros();
-        fvalue=logger::analyze(PRM_ReadData10000x(16)/idegamm,PRM_ReadData(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
+        fvalue=logger::analyze(PRM_ReadData10000x(16)/idegamm,100+PRM_ReadData10x(18),PRM_ReadData(19))*PRM_ReadData(20)/100;
         ftime=((int)micros()-t0)/1000;
         iflag=6;
-        if(dcore::RunLevel>0) setTimeout.set(ffunc,FSAMP);
+        if(dcore::RunLevel>0) setTimeout.set(ffunc,10);
       },PRM_ReadData10x(12));
       iflag=5;
     case 5:
@@ -207,7 +206,8 @@ uint16_t algor_update(int32_t dtu,int32_t otu){
       sigma= (bh-bref)+PRM_ReadData(13)*dbh/wrps >0;
       if(iflag==6) idegamm-=ilngamm*idegamm*dt;
       itugamm+=dtu*idegamm;
-      if(PRM_ReadData(3)==6) logger::stage.eval=satuate(itugamm/10000,0,255);
+      if(PRM_ReadData(3)==5) logger::stage.eval=ftime;
+      else if(PRM_ReadData(3)==6) logger::stage.eval=satuate(itugamm/10000,0,255);
       break;
     }
   }

@@ -82,15 +82,19 @@ namespace logger{
     }
     return sqrt(sig/samp);
   }
-  float N(int n1,int dim,int wgh){
+  float N(int n1,int dim,int th){
     int16_t cval[BUFMIN];
     int nsamp=length-n1;
     if(nsamp>BUFMIN) nsamp=BUFMIN;
-    for(int i=0;i<nsamp;i++){
-      cval[i]=logger::trace(n1+i)->beta;
-    }
+    for(int i=0;i<nsamp;i++) cval[i]=logger::trace(n1+i)->beta;   //fill cval with logged data
+    qsort(cval,nsamp,sizeof(cval[0]),[](const void *a,const void *b){  //sort downward
+      return *(int16_t *)b-*(int16_t *)a;
+    });
+    int upth=cval[nsamp*th/100];
+    int lwth=cval[nsamp-1];    //cval[nsamp*(100-th)/100-1];
+    for(int i=0;i<nsamp;i++) cval[i]=logger::trace(n1+i)->beta;  //fill cval again
     double coef[POLYNOMINAL];
-    int nofs=approx<int16_t>(dim,cval,nsamp,wgh,coef);
+    int nofs=approx<int16_t>(dim,cval,nsamp,upth,lwth,coef);
     auto neq=[&](double x){
       double y=0;
       x=(x-nofs)/nofs;
@@ -100,7 +104,7 @@ namespace logger{
     for(int i=0;i<nsamp;i++){
       int cc=neq(i);
       int cv=cval[i];
-      cval[i]=(cv-cc);
+      cval[i]= (cv<=upth && cv>=lwth)? cv-cc:0;
 #ifdef ONE_SPAN_TEST
       printf("%lu %d %d %d %d %d %d\n",pv[i].stamp,pv[i].beta,pv[i].sigma,pv[i].duty,cv,cc,cval[i]);
 #endif
@@ -108,9 +112,9 @@ namespace logger{
     float sig=variation<int16_t>(cval,nsamp);
     return sig;
   }
-  float analyze(int samp,int dim,int wgh){
+  float analyze(int samp,int dim,int th){
     if(samp<1000)   //"samp" defined as data count, else as interval in micro second
-      return N(length-samp,dim,wgh);
+      return N(length-samp,dim/100,th);
 
     int n1=length-1;
     logger::ALOG *p=logger::trace(n1);
@@ -123,7 +127,11 @@ namespace logger{
       }
       if(ts2 - p->stamp > samp) break;
     }
-    return N(n1,dim,wgh);
+    float s0=N(n1,dim/100,th);
+    int dw=dim%100;
+    if(dw==0) return s0;
+    float s1=N(n1,dim/100+1,th);
+    return (s0*(100-dw)+s1*dw)/100;
   }
   void sweep(){
 #ifdef ARDUINO
